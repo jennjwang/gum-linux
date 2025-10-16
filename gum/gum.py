@@ -20,6 +20,7 @@ from sqlalchemy import insert
 from .db_utils import (
     get_related_observations,
     search_propositions_bm25,
+    get_recent_propositions,
 )
 from .models import Observation, Proposition, init_db
 from .observers import Observer
@@ -648,4 +649,22 @@ class gum:
                 mode=mode,
                 start_time=start_time,
                 end_time=end_time,
+            )
+
+    async def recent(
+        self,
+        *,
+        limit: int = 10,
+        start_time: datetime | None = None,
+        end_time: datetime | None = None,
+        include_observations: bool = False,
+    ) -> list[Proposition]:
+        """Return the most recent propositions ordered by created_at descending."""
+        async with self._session() as session:
+            return await get_recent_propositions(
+                session,
+                limit=limit,
+                start_time=start_time,
+                end_time=end_time,
+                include_observations=include_observations,
             )

@@ -25,6 +25,11 @@ def parse_args():
         action=QueryAction,
         help='Query the GUM with an optional query string',
     )
+    parser.add_argument(
+        '--recent', '-r',
+        action='store_true',
+        help='List the most recent propositions instead of running BM25 search',
+    )
     
     parser.add_argument('--limit', '-l', type=int, help='Limit the number of results', default=10)
     parser.add_argument('--model', '-m', type=str, help='Model to use')
@@ -61,12 +66,25 @@ async def main():
     min_batch_size = args.min_batch_size or int(os.getenv('MIN_BATCH_SIZE', '5'))
     max_batch_size = args.max_batch_size or int(os.getenv('MAX_BATCH_SIZE', '15'))
 
-    # you need one or the other
-    if user_name is None and args.query is None:
-        print("Please provide a user name (as an argument, -u, or as an env variable) or a query (as an argument, -q)")
+    # you need one of: user_name for listening mode, --query, or --recent
+    if user_name is None and args.query is None and not getattr(args, 'recent', False):
+        print("Please provide a user name (-u), a query (-q), or use --recent to list latest propositions")
         return
     
-    if args.query is not None:
+    if getattr(args, 'recent', False):
+        gum_instance = gum(user_name or os.getenv('USER_NAME') or 'default', model)
+        await gum_instance.connect_db()
+        props = await gum_instance.recent(limit=args.limit)
+        print(f"\nRecent {len(props)} propositions:")
+        for p in props:
+            print(f"\nProposition: {p.text}")
+            if p.reasoning:
+                print(f"Reasoning: {p.reasoning}")
+            if p.confidence is not None:
+                print(f"Confidence: {p.confidence:.2f}")
+            print(f"Created At: {p.created_at}")
+            print("-" * 80)
+    elif args.query is not None:
         gum_instance = gum(user_name, model)
         await gum_instance.connect_db()
         result = await gum_instance.query(args.query, limit=args.limit)

@@ -245,3 +245,46 @@ async def get_related_observations(
     )
     result = await session.execute(stmt)
     return result.scalars().all()
+
+
+async def get_recent_propositions(
+    session: AsyncSession,
+    *,
+    limit: int = 10,
+    start_time: datetime | None = None,
+    end_time: datetime | None = None,
+    include_observations: bool = False,
+) -> List[Proposition]:
+    """Fetch the most recent propositions ordered by created_at desc.
+
+    Args:
+        session: Active async DB session
+        limit: Max number of propositions to return
+        start_time: Optional lower bound for created_at
+        end_time: Optional upper bound for created_at (defaults to now)
+        include_observations: Whether to eager-load related observations
+
+    Returns:
+        List[Proposition]: Most recent propositions
+    """
+
+    if end_time is None:
+        end_time = datetime.now(timezone.utc)
+    if start_time is not None and start_time.tzinfo is None:
+        start_time = start_time.replace(tzinfo=timezone.utc)
+    if end_time.tzinfo is None:
+        end_time = end_time.replace(tzinfo=timezone.utc)
+
+    stmt = (
+        select(Proposition)
+        .where(Proposition.created_at <= end_time)
+        .order_by(Proposition.created_at.desc())
+        .limit(limit)
+    )
+    if start_time is not None:
+        stmt = stmt.where(Proposition.created_at >= start_time)
+    if include_observations:
+        stmt = stmt.options(selectinload(Proposition.observations))
+
+    result = await session.execute(stmt)
+    return result.scalars().all()
