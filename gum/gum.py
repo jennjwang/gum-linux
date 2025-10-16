@@ -122,7 +122,7 @@ class gum:
         self._loop_task: asyncio.Task | None = None
         self._batch_task: asyncio.Task | None = None
         self._batch_processing_lock = asyncio.Lock()
-        self.update_handlers: list[Callable[[Observer, Update], None]] = []
+        self.update_handlers: list[Callable[[Observer, Update], None]] = [self._default_handler]
 
     def start_update_loop(self):
         """Start the asynchronous update loop for processing observer updates."""
@@ -211,7 +211,8 @@ class gum:
                 upd: Update = fut.result()
                 obs = gets[fut]
 
-                asyncio.create_task(self._default_handler(obs, upd))
+                for handler in self.update_handlers:
+                    asyncio.create_task(handler(obs, upd))
 
     async def _batch_processing_loop(self):
         """Process batched observations when minimum batch size is reached."""
