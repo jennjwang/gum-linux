@@ -21,6 +21,7 @@ from .db_utils import (
     get_related_observations,
     search_propositions_bm25,
     get_recent_propositions,
+    get_recent_observations,
 )
 from .models import Observation, Proposition, init_db
 from .observers import Observer
@@ -668,4 +669,20 @@ class gum:
                 start_time=start_time,
                 end_time=end_time,
                 include_observations=include_observations,
+            )
+
+    async def recent_observations(
+        self,
+        *,
+        limit: int = 10,
+        start_time: datetime | None = None,
+        end_time: datetime | None = None,
+    ) -> list[Observation]:
+        """Return the most recent observations ordered by created_at descending."""
+        async with self._session() as session:
+            return await get_recent_observations(
+                session,
+                limit=limit,
+                start_time=start_time,
+                end_time=end_time,
             )

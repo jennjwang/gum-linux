@@ -288,3 +288,31 @@ async def get_recent_propositions(
 
     result = await session.execute(stmt)
     return result.scalars().all()
+
+
+async def get_recent_observations(
+    session: AsyncSession,
+    *,
+    limit: int = 10,
+    start_time: datetime | None = None,
+    end_time: datetime | None = None,
+) -> List[Observation]:
+    """Fetch the most recent observations ordered by created_at desc."""
+    if end_time is None:
+        end_time = datetime.now(timezone.utc)
+    if start_time is not None and start_time.tzinfo is None:
+        start_time = start_time.replace(tzinfo=timezone.utc)
+    if end_time.tzinfo is None:
+        end_time = end_time.replace(tzinfo=timezone.utc)
+
+    stmt = (
+        select(Observation)
+        .where(Observation.created_at <= end_time)
+        .order_by(Observation.created_at.desc())
+        .limit(limit)
+    )
+    if start_time is not None:
+        stmt = stmt.where(Observation.created_at >= start_time)
+
+    result = await session.execute(stmt)
+    return result.scalars().all()
