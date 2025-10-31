@@ -412,11 +412,12 @@ class Screen(Observer):
 
     async def _process_and_emit(self, before_path: str, after_path: str) -> None:
         """Process screenshots and emit an update.
-        
+
         Args:
             before_path (str): Path to the "before" screenshot.
             after_path (str | None): Path to the "after" screenshot, if any.
         """
+        print("[GUM] 🤖 Processing observation with GPT Vision...")
         # chronology: append 'before' first (history order == real order)
         self._history.append(before_path)
         prev_paths = list(self._history)
@@ -435,6 +436,7 @@ class Screen(Observer):
             summary = f"[summary failed: {exc}]"
 
         txt = (transcription + summary).strip()
+        print(f"[GUM] ✅ Observation complete!\n  Summary: {txt[:100]}...")
         await self.update_queue.put(Update(content=txt, content_type="input_text"))
 
     # ─────────────────────────────── skip guard
@@ -495,10 +497,13 @@ class Screen(Observer):
                     return
 
                 ev = self._pending_event
+                print(f"[GUM] 📸 Capturing {ev['type']} event on monitor {ev['mon']}")
                 aft = await asyncio.to_thread(sct.grab, mons[ev["mon"] - 1])
 
                 bef_path = await self._save_frame(ev["before"], "before")
                 aft_path = await self._save_frame(aft, "after")
+                print(f"[GUM] 💾 Screenshots saved:\n  Before: {bef_path}\n  After: {aft_path}")
+
                 await self._process_and_emit(bef_path, aft_path)
 
                 log.info(f"{ev['type']} captured on monitor {ev['mon']}")
@@ -539,6 +544,10 @@ class Screen(Observer):
 
             # ---- main capture loop ----
             log.info(f"Screen observer started — guarding {self._guard or '∅'}")
+            print(f"[GUM] 🚀 Screen observer started!")
+            print(f"[GUM] 📁 Screenshots will be saved to: {self.screens_dir}")
+            if self._guard:
+                print(f"[GUM] 🛡️  Skipping when these apps are visible: {self._guard}")
 
             while self._running:                         # flag from base class
                 t0 = time.time()

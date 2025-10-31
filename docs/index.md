@@ -13,7 +13,7 @@ hide:
 
 General User Models (GUMs) learn about you by observing _any_ interaction you have with your computer. The GUM takes as input any unstructured observation of a user (e.g., device screenshots) and constructs confidence-weighted propositions that capture the user's knowledge and preferences. GUMs introduce an architecture that infers new propositions about a user from multimodal observations, retrieves related propositions for context, and continuously revises existing propositions.
 
-*tl;dr* Everything you do can be used to make your systems more context-aware.
+_tl;dr_ Everything you do can be used to make your systems more context-aware.
 
 ## Getting Started
 
@@ -34,9 +34,9 @@ First, you'll need to install the GUM package. There are two ways to do it:
         > git clone git@github.com:GeneralUserModels/gum.git
         > cd gum
         > pip install --editable .
-        ```    
+        ```
 
-You can start a GUM server directly from the command line. 
+You can start a GUM server directly from the command line.
 
 !!! info "Getting Started II: Starting a GUM server"
 
@@ -47,7 +47,7 @@ You can start a GUM server directly from the command line.
 
         ```bash
         > pip install "sglang[all]"
-        > pip install flashinfer -i https://flashinfer.ai/whl/cu121/torch2.4/ 
+        > pip install flashinfer -i https://flashinfer.ai/whl/cu121/torch2.4/
 
         > # Launch model
         > CUDA_VISIBLE_DEVICES=0 python -m sglang.launch_server ....
@@ -78,7 +78,7 @@ You can start a GUM server directly from the command line.
 
     !!! note "Required Permissions"
         Go to “System Settings” → “Privacy & Security” → “Accessibility” → turn on the “Terminal” option. This is necessary for GUM to observe your interactions and build its model when launched via the Terminal.
-        
+
         When you first run the GUM (below), your system may also prompt you to grant accessibility and screen recording permissions to the application. You may need to restart the process a few times as you grant these permissions.
 
     Start the GUM listening process up through the Terminal app:
@@ -117,7 +117,7 @@ You can start a GUM server directly from the command line.
     [...]
     ```
 
-    Optionally, you can pass a query string and the number of results you want back (by default, 10). In the example below, I want to find things that are related to work on GUMs. 
+    Optionally, you can pass a query string and the number of results you want back (by default, 10). In the example below, I want to find things that are related to work on GUMs.
 
     ```bash
     > gum -q "gum" -l 10
@@ -172,7 +172,9 @@ For example: you can set up [an MCP that uses GUMs here.](tutorials/mcp.md)
 </div>
 
 ### **Observers** collect raw interaction data.
+
 Observers are modular components that capture various user interactions: screen content, notifications, etc. Each observer operates independently, streaming its observations to the GUM core for processing. We implement a [Screen observer](api-reference/observers.md) as an example.
 
 ### **Propositions** describe inferences made about the user.
+
 The core of GUM is its proposition system, which transforms raw observations into structured knowledge. Each proposition carries a confidence score and connects to related information, continuously updating as new evidence arrives.
