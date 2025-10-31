@@ -10,7 +10,6 @@ setup(
         "mss",  # For screen capture
         "pynput",  # For mouse/keyboard monitoring
         "shapely",  # For geometry operations
-        "pyobjc-framework-Quartz",  # For macOS window management
         "openai>=1.0.0",
         "SQLAlchemy>=2.0.0",
         "pydantic>=2.0.0",
@@ -20,6 +19,15 @@ setup(
         "aiosqlite",
         "greenlet"
     ],
+    extras_require={
+        'macos': [
+            "pyobjc-framework-Quartz",  # For macOS window management
+        ],
+        'linux': [
+            "python-xlib",  # For Linux window management
+            "ewmh",  # For extended window manager hints
+        ],
+    },
     entry_points={
         'console_scripts': [
             'gum=gum.cli:cli',

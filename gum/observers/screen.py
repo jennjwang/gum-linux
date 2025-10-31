@@ -7,6 +7,7 @@ from __future__ import annotations
 import base64
 import logging
 import os
+import platform
 import time
 from collections import deque
 from typing import Any, Dict, Iterable, List, Optional
@@ -15,11 +16,32 @@ import asyncio
 
 # — Third-party —
 import mss
-import Quartz
 from PIL import Image
 from pynput import mouse           # still synchronous
 from shapely.geometry import box
 from shapely.ops import unary_union
+
+# — Platform-specific imports —
+PLATFORM = platform.system()
+
+if PLATFORM == "Darwin":
+    try:
+        import Quartz
+        HAS_QUARTZ = True
+    except ImportError:
+        HAS_QUARTZ = False
+        logging.warning("pyobjc-framework-Quartz not installed. Window visibility features disabled.")
+elif PLATFORM == "Linux":
+    try:
+        from Xlib import X, display as xdisplay
+        from ewmh import EWMH
+        HAS_XLIB = True
+    except ImportError:
+        HAS_XLIB = False
+        logging.warning("python-xlib or ewmh not installed. Window visibility features disabled.")
+else:
+    HAS_QUARTZ = False
+    HAS_XLIB = False
 
 # — Local —
 from .observer import Observer
@@ -41,30 +63,56 @@ def _get_global_bounds() -> tuple[float, float, float, float]:
 
     Returns
     -------
-    (min_x, min_y, max_x, max_y) tuple in Quartz global coordinates.
+    (min_x, min_y, max_x, max_y) tuple in global coordinates.
     """
-    err, ids, cnt = Quartz.CGGetActiveDisplayList(16, None, None)
-    if err != Quartz.kCGErrorSuccess:  # pragma: no cover (defensive)
-        raise OSError(f"CGGetActiveDisplayList failed: {err}")
+    if PLATFORM == "Darwin" and HAS_QUARTZ:
+        err, ids, cnt = Quartz.CGGetActiveDisplayList(16, None, None)
+        if err != Quartz.kCGErrorSuccess:  # pragma: no cover (defensive)
+            raise OSError(f"CGGetActiveDisplayList failed: {err}")
 
-    min_x = min_y = float("inf")
-    max_x = max_y = -float("inf")
-    for did in ids[:cnt]:
-        r = Quartz.CGDisplayBounds(did)
-        x0, y0 = r.origin.x, r.origin.y
-        x1, y1 = x0 + r.size.width, y0 + r.size.height
-        min_x, min_y = min(min_x, x0), min(min_y, y0)
-        max_x, max_y = max(max_x, x1), max(max_y, y1)
-    return min_x, min_y, max_x, max_y
+        min_x = min_y = float("inf")
+        max_x = max_y = -float("inf")
+        for did in ids[:cnt]:
+            r = Quartz.CGDisplayBounds(did)
+            x0, y0 = r.origin.x, r.origin.y
+            x1, y1 = x0 + r.size.width, y0 + r.size.height
+            min_x, min_y = min(min_x, x0), min(min_y, y0)
+            max_x, max_y = max(max_x, x1), max(max_y, y1)
+        return min_x, min_y, max_x, max_y
+
+    elif PLATFORM == "Linux" and HAS_XLIB:
+        try:
+            disp = xdisplay.Display()
+            screen = disp.screen()
+            min_x, min_y = 0, 0
+            max_x, max_y = screen.width_in_pixels, screen.height_in_pixels
+            disp.close()
+            return min_x, min_y, max_x, max_y
+        except Exception as e:
+            logging.warning(f"Failed to get display bounds on Linux: {e}")
+            return 0, 0, 1920, 1080  # fallback
+
+    else:
+        # Fallback for unsupported platforms
+        return 0, 0, 1920, 1080
 
 
 def _get_visible_windows() -> List[tuple[dict, float]]:
     """List *onscreen* windows with their visible‑area ratio.
 
     Each tuple is ``(window_info_dict, visible_ratio)`` where *visible_ratio*
-    is in ``[0.0, 1.0]``.  Internal system windows (Dock, WindowServer, …) are
-    ignored.
+    is in ``[0.0, 1.0]``.  Internal system windows are ignored.
     """
+    if PLATFORM == "Darwin" and HAS_QUARTZ:
+        return _get_visible_windows_macos()
+    elif PLATFORM == "Linux" and HAS_XLIB:
+        return _get_visible_windows_linux()
+    else:
+        return []
+
+
+def _get_visible_windows_macos() -> List[tuple[dict, float]]:
+    """macOS implementation of _get_visible_windows."""
     _, _, _, gmax_y = _get_global_bounds()
 
     opts = (
@@ -105,13 +153,92 @@ def _get_visible_windows() -> List[tuple[dict, float]]:
     return result
 
 
+def _get_visible_windows_linux() -> List[tuple[dict, float]]:
+    """Linux implementation of _get_visible_windows using EWMH."""
+    try:
+        ewmh = EWMH()
+        windows = ewmh.getClientList()
+
+        occupied = None
+        result: list[tuple[dict, float]] = []
+
+        # Sort windows by stacking order (top to bottom)
+        stacking = ewmh.getClientListStacking()
+        if stacking:
+            windows = sorted(windows, key=lambda w: stacking.index(w) if w in stacking else -1, reverse=True)
+
+        for win in windows:
+            try:
+                # Get window name
+                name = ewmh.getWmName(win)
+                if not name:
+                    name = win.get_wm_class()[1] if win.get_wm_class() else ""
+
+                # Skip system windows
+                if name in ("", "Desktop", "Panel"):
+                    continue
+
+                # Get window geometry
+                geom = win.get_geometry()
+                # Translate to root coordinates
+                coords = win.translate_coords(ewmh.root, 0, 0)
+
+                x, y = coords.x, coords.y
+                w, h = geom.width, geom.height
+
+                if w <= 0 or h <= 0:
+                    continue
+
+                # Check if window is mapped (visible)
+                wm_state = win.get_wm_state()
+                if not wm_state or wm_state.state != 1:  # 1 = NormalState
+                    continue
+
+                poly = box(x, y, x + w, y + h)
+                if poly.is_empty:
+                    continue
+
+                visible = poly if occupied is None else poly.difference(occupied)
+                if not visible.is_empty:
+                    ratio = visible.area / poly.area
+                    info = {
+                        "window_name": name,
+                        "window_class": win.get_wm_class()[1] if win.get_wm_class() else "",
+                        "x": x, "y": y, "width": w, "height": h
+                    }
+                    result.append((info, ratio))
+                    occupied = poly if occupied is None else unary_union([occupied, poly])
+
+            except Exception as e:
+                # Skip windows that cause errors
+                logging.debug(f"Error processing window: {e}")
+                continue
+
+        ewmh.display.close()
+        return result
+
+    except Exception as e:
+        logging.warning(f"Failed to get visible windows on Linux: {e}")
+        return []
+
+
 def _is_app_visible(names: Iterable[str]) -> bool:
     """Return *True* if **any** window from *names* is at least partially visible."""
     targets = set(names)
-    return any(
-        info.get("kCGWindowOwnerName", "") in targets and ratio > 0
-        for info, ratio in _get_visible_windows()
-    )
+
+    if PLATFORM == "Darwin":
+        return any(
+            info.get("kCGWindowOwnerName", "") in targets and ratio > 0
+            for info, ratio in _get_visible_windows()
+        )
+    elif PLATFORM == "Linux":
+        return any(
+            (info.get("window_name", "") in targets or
+             info.get("window_class", "") in targets) and ratio > 0
+            for info, ratio in _get_visible_windows()
+        )
+    else:
+        return False
 
 ###############################################################################
 # Screen observer                                                             #
